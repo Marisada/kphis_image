@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>TEST</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="stylesheet" href="viewer.min.css">
+    <link rel="stylesheet" href="app.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <button type="button" id="checkUpdate" title="Check Update">
+      Check Update
+    </button>
+    <div id="updateBanner" class="banner" data-state="noupdate">
+      <div class="banner-content">
+          <div class="banner-headline">No Update Available</div>
+          <div class="banner-subhead">Waiting for an update to become available</div>
+      </div>
+    </div>
+    <script type="module" src="app.js"></script>
+    <script src="viewer.min.js" defer></script>
+  </body>
+</html>

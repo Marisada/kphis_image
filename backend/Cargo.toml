@@ -1,0 +1,28 @@
+[package]
+name = "backend"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+description = { workspace = true }
+repository = { workspace = true }
+keywords = { workspace = true }
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+
+# this crate only
+axum = { version = "0.8", features = [ "multipart" ] }
+axum-extra = { version = "0.10", features = [ "typed-header" ] }
+axum-macros = "0.5"
+tokio = { version = "1", features = [ "full" ]}
+tower-cookies = "0.11"
+tower-http = { version = "0.6", features = [ "fs", "compression-br", "compression-gzip", "limit", "set-header", "trace", "timeout" ] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [ "ansi", "local-time", "env-filter" ] }
+
+# from workspace
+serde = { workspace = true }
+serde_derive = { workspace = true }
+serde_json = { workspace = true }
+ulid = { workspace = true }

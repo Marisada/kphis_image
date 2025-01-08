@@ -1,0 +1,45 @@
+[package]
+name = "frontend"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+description = { workspace = true }
+repository = { workspace = true }
+keywords = { workspace = true }
+license = "MIT"
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+# this crate only
+console_error_panic_hook = "0.1"
+gloo-timers = "0.3"
+image = "0.25"
+wasm-logger = "0.2"
+
+# from workspace
+concat-string = { workspace = true }
+dominator = { workspace = true }
+js-sys = { workspace = true }
+futures = { workspace = true }
+futures-signals = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_derive = { workspace = true }
+serde_json = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+ulid = { workspace = true }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { workspace = true }
+
+[dependencies.getrandom]
+version = "0.2"
+features = ["js"]
+
+[package.metadata.wasm-pack.profile.release]
+# wasm-opt = false
+wasm-opt = ['-Oz']

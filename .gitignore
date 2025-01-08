@@ -1,0 +1,11 @@
+.vscode/
+debug/
+target/
+volume/images
+volume/thumbs
+volume/pwa/client.js
+volume/pwa/client_bg.wasm
+Cargo.lock
+**/*.rs.bk
+*.pdb
+*.7z
