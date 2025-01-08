@@ -14,6 +14,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 
+# workspace crate
+model = { workspace = true }
+
 # this crate only
 console_error_panic_hook = "0.1"
 gloo-timers = "0.3"

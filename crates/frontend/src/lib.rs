@@ -13,11 +13,13 @@ use futures_signals::{
 use image::{imageops::FilterType, ImageReader, ImageFormat, ImageResult};
 use js_sys::{Array, ArrayBuffer, Uint8Array};
 use gloo_timers::callback::Timeout;
-use std::io::Cursor;
+use std::{io::Cursor, rc::Rc};
 use ulid::Ulid;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Blob, File, FileList, FormData, Headers, HtmlInputElement, RequestInit, Response, window};
+
+use model::ImageData;
 
 use abort::Abort;
 use binding::{Viewer, ViewerOption};
@@ -28,6 +30,22 @@ const MAX_HEIGHT: u32 = 1280; // 16x64=1024, 16x80=1280, 16*96=1536
 const THUMB_WIDTH: u32 = 144; // 9x16
 const THUMB_HEIGHT: u32 = 256; // 16x16
 
+struct App {
+    loaded_first: Mutable<bool>,
+    first_image_datas: MutableVec<ImageData>,
+    images_redraw: Mutable<bool>,
+}
+
+impl App {
+    fn new() -> Rc<Self> {
+        Rc::new(Self {
+            loaded_first: Mutable::new(false),
+            first_image_datas: MutableVec::new(),
+            images_redraw: Mutable::new(false),
+        })
+    }
+}
+
 #[wasm_bindgen(start)]
 pub fn main_js() {
     wasm_logger::init(wasm_logger::Config::default());
@@ -36,21 +54,34 @@ pub fn main_js() {
     console_error_panic_hook::set_once();
     log::info!("wasm logging enabled");
 
-    dominator::append_dom(&dominator::get_id("app"), render());
+    let app = App::new();
+    dominator::append_dom(&dominator::get_id("app"), render(app));
 }
 
-fn render() -> Dom {
-
-    let thumb_paths: MutableVec<String> = MutableVec::new();
-    let images_redraw = Mutable::new(false);
-
+fn render(app: Rc<App>) -> Dom {
     html!("div", {
-        .future(images_redraw.signal_cloned().for_each(clone!(images_redraw => move |redraw| {
+        .future(app.loaded_first.signal().for_each(clone!(app => move |loaded| {
+            clone!(app => async move {
+                if !loaded {
+                    let image_datas = get_first_images().await.unwrap();
+                    {
+                        let mut lock = app.first_image_datas.lock_mut();
+                        lock.clear();
+                        lock.extend(image_datas);
+                    }
+                    let elm = get_id("images-list");
+                    Viewer::new(&elm).destroy();
+                    app.images_redraw.set(true);
+                    app.loaded_first.set(true);
+                }
+            })
+        })))
+        .future(app.images_redraw.signal_cloned().for_each(clone!(app => move |redraw| {
             if redraw {
                 let elm = get_id("images-list");
-                Timeout::new(100, clone!(images_redraw => move || {
+                Timeout::new(100, clone!(app => move || {
                     let _ = Viewer::new_with_original(&elm, &ViewerOption::default().to_value());
-                    images_redraw.set(false);
+                    app.images_redraw.set(false);
                 })).forget();
             }
             async {}
@@ -62,6 +93,7 @@ fn render() -> Dom {
             .attr("target","_blank")
             .text("Greeting page")
         }))
+        .child(html!("br"))
         .child(html!("div", {
             .children(&mut [
                 html!("label", {
@@ -79,22 +111,20 @@ fn render() -> Dom {
                     .attr("capture","environment")
                     .attr("multiple","")
                     .style("opacity","0")
-                    .event(clone!(thumb_paths, images_redraw => move |e: events::Change| {
+                    .event(clone!(app => move |e: events::Change| {
                         if let Some(input) = e.target() {
                             let file_input = input.dyn_into::<HtmlInputElement>().unwrap();
                             if let Some(files) = file_input.files() {
                                 if files.length() > 0 {
                                     let loader = AsyncLoader::new();
-                                    loader.load(clone!(thumb_paths, images_redraw, files => async move {
+                                    loader.load(clone!(app, files => async move {
                                         let urls = post_files(&files).await.unwrap();
-                                        let mut lock = thumb_paths.lock_mut();
-                                        lock.clear();
-                                        lock.extend(urls);
+                                        let _ = post_first_images(&urls).await.unwrap();
 
-                                        let elm = get_id("images-list");
-                                        Viewer::new(&elm).destroy();
-                                        images_redraw.set(true);
-                                    }))
+                                        app.loaded_first.set(false);
+
+                                        file_input.set_value("");
+                                    }));
                                 }
                             }
                         }
@@ -110,21 +140,23 @@ fn render() -> Dom {
                     .style("margin","0")
                     .style("padding","0")
                     .style("max-width","400px")
-                    .children_signal_vec(thumb_paths.signal_vec_cloned().map(|url| {
+                    .style("columns","3")
+                    .style("column-gap","1px")
+                    .children_signal_vec(app.first_image_datas.signal_vec_cloned().map(|image_data| {
                         html!("li", {
-                            .style("border","1px solid transparent")
-                            .style("float","left")
-                            .style("height","calc(100% / 3)")
-                            .style("margin","0 -1px -1px 0")
-                            .style("overflow","hidden")
-                            .style("width","calc(100% / 3 - 3px)")
+                            // .style("border","1px solid transparent")
+                            // .style("float","left")
+                            // .style("height","calc(100% / 3)")
+                            // .style("margin","0 -1px -1px 0")
+                            // .style("overflow","hidden")
+                            // .style("width","calc(100% / 3 - 3px)")
                             .child(html!("img", {
                                 .style("cursor","-webkit-zoom-in")
                                 .style("cursor","zoom-in")
                                 .style("width","100%")
-                                .attr("data-original", &["images",&url].join("/"))
-                                .attr("src", &["thumbs",&url].join("/"))
-                                .attr("alt",&url)
+                                .attr("data-original", &["images", &image_data.path].join("/"))
+                                .attr("src", &["thumbs", &image_data.path].join("/"))
+                                .attr("alt", &image_data.path)
                             }))
                         })
                     }))
@@ -172,6 +204,90 @@ fn image_bytes_parser(raw_data: &[u8]) -> ImageResult<(Vec<u8>, Vec<u8>)> {
     thumb.write_to(&mut Cursor::new(&mut res_thumb), ImageFormat::WebP)?;
 
     Ok((res_image, res_thumb))
+}
+
+async fn get_first_images() -> Result<Vec<ImageData>, String> {
+
+    match fetch_json_api("/api/first/1", "GET", None).await {
+        Ok((response, true)) => {
+            let response: Vec<ImageData> = serde_wasm_bindgen::from_value(response)
+                .map_err(|e| e.to_string())?;
+            Ok(response)
+        }
+        Ok((app_error, false)) => {
+            let error: String = serde_wasm_bindgen::from_value(app_error)
+                .map_err(|e| e.to_string())?;
+            Err(error)
+        }
+        Err(e) => {
+            Err(e.as_string().unwrap_or(String::from("fetch error")))
+        }
+    }
+}
+
+async fn post_first_images(
+    urls: &[String],
+) -> Result<Vec<String>, String> {
+
+    let image_datas = urls.iter().map(|url| {
+        ImageData {
+            image_id: 0,
+            foreign_id: 1,
+            path: url.to_string(),
+            user: String::from("user"),
+        }
+    }).collect::<Vec<ImageData>>();
+
+    let body_json = serde_json::to_string(&image_datas).map_err(|e| e.to_string())?;
+    let body = serde_wasm_bindgen::to_value(&body_json).map_err(|e| e.to_string())?;
+
+    match fetch_json_api("/api/first", "POST", Some(&body)).await {
+        Ok((response, true)) => {
+            let response: Vec<String> = serde_wasm_bindgen::from_value(response)
+                .map_err(|e| e.to_string())?;
+            Ok(response)
+        }
+        Ok((app_error, false)) => {
+            let error: String = serde_wasm_bindgen::from_value(app_error)
+                .map_err(|e| e.to_string())?;
+            Err(error)
+        }
+        Err(e) => {
+            Err(e.as_string().unwrap_or(String::from("fetch error")))
+        }
+    }
+}
+
+pub async fn fetch_json_api(
+    url: &str,
+    method: &str,
+    body: Option<&JsValue>,
+) -> Result<(JsValue, bool), JsValue> {
+    let abort = Abort::new()?;
+
+    let headers = Headers::new()?;
+    headers.set("Accept", "application/json")?;
+    headers.set("Content-Type", "application/json")?;
+
+    let w = window().unwrap();
+    let init = RequestInit::new();
+    init.set_method(method);
+    init.set_headers(&headers);
+    if let Some(b) = body {
+        init.set_body(b);
+    }
+    init.set_signal(Some(&abort.signal()));
+    let future = w.fetch_with_str_and_init(url, &init);
+
+    let response = JsFuture::from(future).await?.unchecked_into::<Response>();
+
+    let value = JsFuture::from(response.json()?).await?;
+
+    if response.ok() {
+        Ok((value, true))
+    } else {
+        Ok((value, false))
+    }
 }
 
 async fn post_files(

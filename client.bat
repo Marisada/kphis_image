@@ -2,7 +2,7 @@
 
 set name=client
 set pwa_path=volume\pwa
-set wasm_path=frontend
+set wasm_path=crates\frontend
 set project_path=%cd%
 
 cd %pwa_path%

@@ -1,0 +1,18 @@
+[package]
+name = "model"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+description = { workspace = true }
+repository = { workspace = true }
+keywords = { workspace = true }
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+
+# this crate only
+
+# from workspace
+serde = { workspace = true }
+serde_derive = { workspace = true }

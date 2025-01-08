@@ -21,9 +21,9 @@ use tower_http::{
 };
 use tracing::Level;
 
-use crate::handlers;
+use crate::{AppState, handlers};
 
-pub fn router() -> Router {
+pub fn router(state: AppState) -> Router {
     let compression_predicate = SizeAbove::new(1024)
         // SSE *MUST NOT* COMPRESS, if compressed, data will send once when closed
         .and(NotForContentType::const_new("text/event-stream"))
@@ -35,7 +35,11 @@ pub fn router() -> Router {
     Router::new()
         .route("/greet", get(handlers::greet_handler))
         .route("/upload", post(handlers::upload_handler))
-        // .with_state(state)
+        .route("/first/{foreign_id}", get(handlers::get_first))
+        .route("/first", post(handlers::post_first))
+        .route("/second/{foreign_id}", get(handlers::get_second))
+        .route("/second", post(handlers::post_second))
+        .with_state(state)
         .layer(RequestBodyLimitLayer::new(4096000))
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
         .layer(CookieManagerLayer::new())

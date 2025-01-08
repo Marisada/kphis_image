@@ -2,18 +2,42 @@ mod handlers;
 mod route;
 
 use axum::{handler::HandlerWithoutStateExt, http::StatusCode, Router};
-use std::{collections::HashMap, net::SocketAddr};
-use tower_cookies::cookie::time::PrimitiveDateTime;
+use std::{collections::HashMap, net::SocketAddr, 
+    sync::{atomic::{AtomicU32, Ordering}, Arc, Mutex},
+};
 use tower_http::services::ServeDir;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use model::ImageData;
+
+static GLOBAL_FIRST_COUNT: AtomicU32 = AtomicU32::new(1);
+static GLOBAL_SECOND_COUNT: AtomicU32 = AtomicU32::new(1);
+
+#[derive(Clone)]
 pub struct AppState {
-    pub first_table: HashMap<u32, ImageData>,
-    pub second_table: HashMap<u32, ImageData>,
+    pub first_table: Arc<Mutex<HashMap<u32, ImageData>>>,
+    pub second_table: Arc<Mutex<HashMap<u32, ImageData>>>,
 }
 
+impl AppState {
+    fn new() -> Self {
+        Self { 
+            first_table: Arc::new(Mutex::new(HashMap::new())),
+            second_table: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
 
+// return old value
+pub fn add_first_count() -> u32 {
+    GLOBAL_FIRST_COUNT.fetch_add(1, Ordering::Relaxed)
+}
+
+// return old value
+pub fn add_second_count() -> u32 {
+    GLOBAL_SECOND_COUNT.fetch_add(1, Ordering::Relaxed)
+}
 
 #[tokio::main]
 async fn main() {
@@ -35,8 +59,9 @@ async fn main() {
     let images_dir = ServeDir::new("volume/images");
     let thumbs_dir = ServeDir::new("volume/thumbs");
 
+    let state = AppState::new();
     let app = Router::new()
-        .nest("/api", route::router())
+        .nest("/api", route::router(state))
         .nest_service("/images", images_dir)
         .nest_service("/thumbs", thumbs_dir)
         .fallback_service(root_dir);

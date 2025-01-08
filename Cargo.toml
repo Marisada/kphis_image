@@ -1,18 +1,22 @@
 [workspace]
-members = [ "backend", "frontend" ]
+members = [ "crates/*" ]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.0"
 rust-version = "1.83"
 edition = "2021"
 authors = ["Marisada Pitakthum <p.marisada@gmail.com>"]
-description = "Dominator + Axum template"
+description = "Image implementation test for KPHIS"
 license = "MIT"
-repository = "https://github.com/Marisada/dominator-axum"
+repository = "https://github.com/Marisada/kphis_image"
 keywords = []
 
 [workspace.dependencies]
+backend = { path = "crates/backend" }
+frontend = { path = "crates/frontend" }
+model = { path = "crates/model" }
+
 concat-string = "1"
 dominator = "0.5"
 futures = "0.3"
