@@ -1,5 +1,5 @@
 use futures::future::{abortable, AbortHandle};
-use futures_signals::signal::Mutable;
+use futures_signals::signal::{Mutable, Signal};
 use std::{
     future::Future,
     sync::atomic::{AtomicUsize, Ordering},
@@ -79,7 +79,7 @@ impl AsyncLoader {
         });
     }
 
-    // pub fn is_loading(&self) -> impl Signal<Item = bool> {
-    //     self.loading.signal_ref(|x| x.is_some())
-    // }
+    pub fn is_loading(&self) -> impl Signal<Item = bool> {
+        self.loading.signal_ref(|x| x.is_some())
+    }
 }

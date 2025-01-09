@@ -1,7 +1,7 @@
 const VERSION = '660731-1515'
 
 import init from './client.js'
-init('./client_bg.wasm').catch(console.error)
+init({url:'./client_bg.wasm'}).catch(console.error)
 
 if ('serviceWorker' in navigator) {
     const checkUpdate = document.getElementById('checkUpdate')
