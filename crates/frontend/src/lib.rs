@@ -3,6 +3,7 @@
 
 mod abort;
 mod binding;
+mod image;
 mod loader;
 
 use dominator::{clone, Dom, events, get_id, html};
@@ -10,25 +11,20 @@ use futures_signals::{
     signal::{Mutable, SignalExt},
     signal_vec::{MutableVec, SignalVecExt},
 };
-use image::{imageops::FilterType, ImageReader, ImageFormat, ImageResult};
+
 use js_sys::{Array, ArrayBuffer, Uint8Array};
 use gloo_timers::callback::Timeout;
-use std::{io::Cursor, rc::Rc};
+use std::rc::Rc;
 use ulid::Ulid;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Blob, File, FileList, FormData, Headers, HtmlInputElement, RequestInit, Response, window};
-
 use model::ImageData;
 
 use abort::Abort;
 use binding::{Viewer, ViewerOption};
+use image::image_bytes_parser;
 use loader::AsyncLoader;
-
-const MAX_WIDTH: u32 = 720; // 9x64=576, 9x80=720, 9x96=864
-const MAX_HEIGHT: u32 = 1280; // 16x64=1024, 16x80=1280, 16*96=1536
-const THUMB_WIDTH: u32 = 144; // 9x16
-const THUMB_HEIGHT: u32 = 256; // 16x16
 
 struct App {
     loaded_first: Mutable<bool>,
@@ -55,7 +51,7 @@ pub fn main_js() {
     log::info!("wasm logging enabled");
 
     let app = App::new();
-    dominator::append_dom(&dominator::get_id("app"), render(app));
+    dominator::append_dom(&get_id("app"), render(app));
 }
 
 fn render(app: Rc<App>) -> Dom {
@@ -64,14 +60,16 @@ fn render(app: Rc<App>) -> Dom {
             clone!(app => async move {
                 if !loaded {
                     let image_datas = get_first_images().await.unwrap();
-                    {
-                        let mut lock = app.first_image_datas.lock_mut();
-                        lock.clear();
-                        lock.extend(image_datas);
+                    if !image_datas.is_empty() {
+                        {
+                            let mut lock = app.first_image_datas.lock_mut();
+                            lock.clear();
+                            lock.extend(image_datas);
+                        }
+                        let elm = get_id("images-list");
+                        Viewer::new(&elm).destroy();
+                        app.images_redraw.set(true);
                     }
-                    let elm = get_id("images-list");
-                    Viewer::new(&elm).destroy();
-                    app.images_redraw.set(true);
                     app.loaded_first.set(true);
                 }
             })
@@ -95,55 +93,62 @@ fn render(app: Rc<App>) -> Dom {
         }))
         .child(html!("br"))
         .child(html!("div", {
-            .children(&mut [
-                html!("label", {
-                    .attr("for","file_upload")
-                    .style("padding","5px 10px")
-                    .style("border-radius","5px")
-                    .style("border","1px ridge black")
-                    .text("กรุณาเลือกไฟล์")
-                }),
-                html!("input", {
-                    .attr("type","file")
-                    .attr("id","file_upload")
-                    // .attr("accept",".png,.jpg,.jpeg,.webp")
-                    .attr("accept","image/*")
-                    .attr("capture","environment")
-                    .attr("multiple","")
-                    .style("opacity","0")
-                    .event(clone!(app => move |e: events::Change| {
-                        if let Some(input) = e.target() {
-                            let file_input = input.dyn_into::<HtmlInputElement>().unwrap();
-                            if let Some(files) = file_input.files() {
-                                if files.length() > 0 {
-                                    let loader = AsyncLoader::new();
-                                    loader.load(clone!(app, files => async move {
-                                        let urls = post_files(&files).await.unwrap();
-                                        let _ = post_first_images(&urls).await.unwrap();
-
-                                        app.loaded_first.set(false);
-
-                                        file_input.set_value("");
-                                    }));
+            .class("card")
+            // default scroll-bar width edge=15, firefox=17
+            // 2 cols : (1+128+1)*2 + scrollbar 20 = 280
+            // 3 cols : (1+128+1)*3 + scrollbar 20 = 420
+            // 4 cols : (1+128+1)*4 + scrollbar 20 = 540
+            .style("max-width","280px")
+            .child(html!("div", {
+                .class("card-header")
+                .children(&mut [
+                    html!("label", {
+                        .attr("for","file_upload")
+                        .class(["btn","btn-outline-primary"])
+                        .text("Add")
+                    }),
+                    html!("input", {
+                        .attr("type","file")
+                        .attr("id","file_upload")
+                        .attr("accept","image/*")
+                        .attr("capture","environment")
+                        .attr("multiple","")
+                        .class("d-none")
+                        .event(clone!(app => move |e: events::Change| {
+                            if let Some(input) = e.target() {
+                                let file_input = input.dyn_into::<HtmlInputElement>().unwrap();
+                                if let Some(files) = file_input.files() {
+                                    if files.length() > 0 {
+                                        let loader = AsyncLoader::new();
+                                        loader.load(clone!(app, files => async move {
+                                            let urls = post_files(&files).await.unwrap();
+                                            let _ = post_first_images(&urls).await.unwrap();
+    
+                                            app.loaded_first.set(false);
+    
+                                            file_input.set_value("");
+                                        }));
+                                    }
                                 }
                             }
-                        }
-                    }))
-                }),
-            ])
+                        }))
+                    }),
+                ])
+            }))
             .child(html!("div", {
-                .attr("id", "images-container")
+                .class(["card-body","p-0"])
                 .child(html!("ul", {
-                    .class("clearfix")
+                    .class(["d-flex","flex-wrap","m-0","p-0"])
                     .attr("id","images-list")
-                    .style("list-style","none")
-                    .style("margin","0")
-                    .style("padding","0")
-                    .style("max-width","400px")
-                    .style("columns","3")
-                    .style("column-gap","1px")
+                    .style("overflow-y","auto")
+                    // 2 cols : (1+128+1)*2 = 260
+                    // 3 cols : (1+128+1)*3 = 390
+                    // 4 cols : (1+128+1)*4 = 520
+                    .style("height","260px")
                     .children_signal_vec(app.first_image_datas.signal_vec_cloned().map(|image_data| {
                         html!("li", {
+                            .class("position-relative")
+                            .style("margin","1px")
                             // .style("border","1px solid transparent")
                             // .style("float","left")
                             // .style("height","calc(100% / 3)")
@@ -151,12 +156,21 @@ fn render(app: Rc<App>) -> Dom {
                             // .style("overflow","hidden")
                             // .style("width","calc(100% / 3 - 3px)")
                             .child(html!("img", {
-                                .style("cursor","-webkit-zoom-in")
                                 .style("cursor","zoom-in")
-                                .style("width","100%")
                                 .attr("data-original", &["images", &image_data.path].join("/"))
                                 .attr("src", &["thumbs", &image_data.path].join("/"))
                                 .attr("alt", &image_data.path)
+                            }))
+                            .child(html!("div", {
+                                .class(["position-absolute","bottom-0","start-0","w-100","text-center","p-1"])
+                                .style("font-size","8px")
+                                .style("overflow","hidden")
+                                .style("text-overflow","ellipsis")
+                                .style("color","white")
+                                .style("background-color","rgba(0,0,0,0.7)")
+                                .style("z-index","9")
+                                .style("pointer-events","none")
+                                .text(&image_data.path)
                             }))
                         })
                     }))
@@ -185,25 +199,6 @@ async fn bytes_to_blob(bytes: &[u8]) -> Result<Blob, JsValue> {
     img_array.set(0, img_u8a.into());
     // Array to Blob
     Blob::new_with_u8_array_sequence(&img_array)
-}
-
-fn image_bytes_parser(raw_data: &[u8]) -> ImageResult<(Vec<u8>, Vec<u8>)> {
-    let raw_image = ImageReader::new(Cursor::new(raw_data)).with_guessed_format()?.decode()?;
-    let raw_w = raw_image.width();
-    let image = if raw_w > MAX_WIDTH {
-        // see filters detail at https://docs.rs/image/latest/image/imageops/enum.FilterType.html
-        raw_image.resize(MAX_WIDTH, MAX_HEIGHT, FilterType::Triangle)
-    } else {
-        raw_image
-    };
-    let mut res_image = Vec::new();
-    image.write_to(&mut Cursor::new(&mut res_image), ImageFormat::WebP)?;
-
-    let thumb = image.thumbnail(THUMB_WIDTH, THUMB_HEIGHT);
-    let mut res_thumb = Vec::new();
-    thumb.write_to(&mut Cursor::new(&mut res_thumb), ImageFormat::WebP)?;
-
-    Ok((res_image, res_thumb))
 }
 
 async fn get_first_images() -> Result<Vec<ImageData>, String> {
