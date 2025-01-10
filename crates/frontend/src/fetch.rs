@@ -1,5 +1,6 @@
 use js_sys::{Array, ArrayBuffer, Uint8Array};
 use ulid::Ulid;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Blob, File, FileList, FormData, Headers, RequestInit, Response, window};
@@ -49,19 +50,10 @@ pub async fn get_second_images() -> Result<Vec<ImageData>, String> {
 }
 
 pub async fn post_first_images(
-    urls: &[String],
+    images: &[Rc<ImageData>],
 ) -> Result<Vec<String>, String> {
 
-    let image_datas = urls.iter().map(|url| {
-        ImageData {
-            image_id: 0,
-            foreign_id: 1,
-            path: url.to_string(),
-            user: String::from("user"),
-        }
-    }).collect::<Vec<ImageData>>();
-
-    let body_json = serde_json::to_string(&image_datas).map_err(|e| e.to_string())?;
+    let body_json = serde_json::to_string(images).map_err(|e| e.to_string())?;
     let body = serde_wasm_bindgen::to_value(&body_json).map_err(|e| e.to_string())?;
 
     match fetch_json_api("/api/first", "POST", Some(&body)).await {
@@ -82,22 +74,81 @@ pub async fn post_first_images(
 }
 
 pub async fn post_second_images(
-    urls: &[String],
+    images: &[Rc<ImageData>],
 ) -> Result<Vec<String>, String> {
 
-    let image_datas = urls.iter().map(|url| {
-        ImageData {
-            image_id: 0,
-            foreign_id: 1,
-            path: url.to_string(),
-            user: String::from("user"),
-        }
-    }).collect::<Vec<ImageData>>();
-
-    let body_json = serde_json::to_string(&image_datas).map_err(|e| e.to_string())?;
+    let body_json = serde_json::to_string(&images).map_err(|e| e.to_string())?;
     let body = serde_wasm_bindgen::to_value(&body_json).map_err(|e| e.to_string())?;
 
     match fetch_json_api("/api/second", "POST", Some(&body)).await {
+        Ok((response, true)) => {
+            let response: Vec<String> = serde_wasm_bindgen::from_value(response)
+                .map_err(|e| e.to_string())?;
+            Ok(response)
+        }
+        Ok((app_error, false)) => {
+            let error: String = serde_wasm_bindgen::from_value(app_error)
+                .map_err(|e| e.to_string())?;
+            Err(error)
+        }
+        Err(e) => {
+            Err(e.as_string().unwrap_or(String::from("fetch error")))
+        }
+    }
+}
+
+pub async fn put_image(
+    image: &ImageData,
+) -> Result<Vec<String>, String> {
+
+    let body_json = serde_json::to_string(image).map_err(|e| e.to_string())?;
+    let body = serde_wasm_bindgen::to_value(&body_json).map_err(|e| e.to_string())?;
+
+    match fetch_json_api("/api/image", "PUT", Some(&body)).await {
+        Ok((response, true)) => {
+            let response: Vec<String> = serde_wasm_bindgen::from_value(response)
+                .map_err(|e| e.to_string())?;
+            Ok(response)
+        }
+        Ok((app_error, false)) => {
+            let error: String = serde_wasm_bindgen::from_value(app_error)
+                .map_err(|e| e.to_string())?;
+            Err(error)
+        }
+        Err(e) => {
+            Err(e.as_string().unwrap_or(String::from("fetch error")))
+        }
+    }
+}
+
+pub async fn delete_first_images(ids: &[u32]) -> Result<Vec<String>, String> {
+
+    let body_json = serde_json::to_string(&ids).map_err(|e| e.to_string())?;
+    let body = serde_wasm_bindgen::to_value(&body_json).map_err(|e| e.to_string())?;
+
+    match fetch_json_api("/api/first", "DELETE", Some(&body)).await {
+        Ok((response, true)) => {
+            let response: Vec<String> = serde_wasm_bindgen::from_value(response)
+                .map_err(|e| e.to_string())?;
+            Ok(response)
+        }
+        Ok((app_error, false)) => {
+            let error: String = serde_wasm_bindgen::from_value(app_error)
+                .map_err(|e| e.to_string())?;
+            Err(error)
+        }
+        Err(e) => {
+            Err(e.as_string().unwrap_or(String::from("fetch error")))
+        }
+    }
+}
+
+pub async fn delete_second_images(ids: &[u32]) -> Result<Vec<String>, String> {
+
+    let body_json = serde_json::to_string(&ids).map_err(|e| e.to_string())?;
+    let body = serde_wasm_bindgen::to_value(&body_json).map_err(|e| e.to_string())?;
+
+    match fetch_json_api("/api/second", "DELETE", Some(&body)).await {
         Ok((response, true)) => {
             let response: Vec<String> = serde_wasm_bindgen::from_value(response)
                 .map_err(|e| e.to_string())?;
@@ -148,7 +199,7 @@ pub async fn fetch_json_api(
 
 pub async fn post_files(
     filelist: &FileList,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<ImageData>, String> {
     let form_data = FormData::new().unwrap();
     for i in 0..filelist.length() {
         if let Some(file) = filelist.item(i) {
@@ -163,9 +214,9 @@ pub async fn post_files(
             form_data.append_with_blob_and_filename("thumbs", &thumb_blob, &path_with_filename).unwrap();
         }
     }
-    match post_multipart("/api/upload", &form_data).await {
+    match post_multipart("/api/image", &form_data).await {
         Ok((response, true)) => {
-            let response: Vec<String> = serde_wasm_bindgen::from_value(response)
+            let response: Vec<ImageData> = serde_wasm_bindgen::from_value(response)
                 .map_err(|e| e.to_string())?;
             Ok(response)
         }

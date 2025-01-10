@@ -2,7 +2,8 @@ mod handlers;
 mod route;
 
 use axum::{handler::HandlerWithoutStateExt, http::StatusCode, Router};
-use std::{collections::HashMap, net::SocketAddr, 
+use std::{
+    net::SocketAddr, 
     sync::{atomic::{AtomicU32, Ordering}, Arc, Mutex},
 };
 use tower_http::services::ServeDir;
@@ -11,32 +12,28 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use model::ImageData;
 
-static GLOBAL_FIRST_COUNT: AtomicU32 = AtomicU32::new(1);
-static GLOBAL_SECOND_COUNT: AtomicU32 = AtomicU32::new(1);
+static GLOBAL_COUNT: AtomicU32 = AtomicU32::new(1);
 
 #[derive(Clone)]
 pub struct AppState {
-    pub first_table: Arc<Mutex<HashMap<u32, ImageData>>>,
-    pub second_table: Arc<Mutex<HashMap<u32, ImageData>>>,
+    pub images: Arc<Mutex<Vec<ImageData>>>,
+    pub first_table: Arc<Mutex<Vec<ImageData>>>,
+    pub second_table: Arc<Mutex<Vec<ImageData>>>,
 }
 
 impl AppState {
     fn new() -> Self {
         Self { 
-            first_table: Arc::new(Mutex::new(HashMap::new())),
-            second_table: Arc::new(Mutex::new(HashMap::new())),
+            images: Arc::new(Mutex::new(Vec::new())),
+            first_table: Arc::new(Mutex::new(Vec::new())),
+            second_table: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
 
 // return old value
-pub fn add_first_count() -> u32 {
-    GLOBAL_FIRST_COUNT.fetch_add(1, Ordering::Relaxed)
-}
-
-// return old value
-pub fn add_second_count() -> u32 {
-    GLOBAL_SECOND_COUNT.fetch_add(1, Ordering::Relaxed)
+pub fn add_count() -> u32 {
+    GLOBAL_COUNT.fetch_add(1, Ordering::SeqCst)
 }
 
 #[tokio::main]

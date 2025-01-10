@@ -9,7 +9,7 @@ use tracing::info;
 
 use model::ImageData;
 
-use crate::{AppState, add_first_count, add_second_count};
+use crate::{AppState, add_count};
 
 const PATH_PREFIX_IMAGE: &str = "images";
 const PATH_PREFIX_THUMB: &str = "thumbs";
@@ -18,7 +18,10 @@ pub async fn greet_handler() -> Html<&'static str> {
     Html("<h1>Nice to meet you!</h1>")
 }
 
-pub async fn upload_handler(mut multipart: Multipart) -> Result<Json<Vec<String>>, Response<Body>> {
+pub async fn post_image(
+    State(app): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<Vec<ImageData>>, Response<Body>> {
     let mut filenames = Vec::new();
     while let Ok(Some(field)) = multipart.next_field().await {
         let field_name = field.name().unwrap_or("unnamed").to_owned();
@@ -43,16 +46,30 @@ pub async fn upload_handler(mut multipart: Multipart) -> Result<Json<Vec<String>
             f.write_all(&data).await.unwrap();
             info!("Received field: {} {} {} ({} bytes)", &field_name, &field_filename, &field_content_type, data.len());
             if field_name.as_str() == PATH_PREFIX_THUMB {
-                filenames.push(field_filename);
+                let image = ImageData {
+                    image_id: add_count(),
+                    foreign_id: 0,
+                    path: field_filename.clone(),
+                    title: None,
+                    user: String::from("user"),
+                };
+                {
+                    let mut lock = app.images.lock().unwrap();
+                    lock.push(image.clone());
+                }
+                filenames.push(image);
             }
         }
     }
     Ok(Json(filenames))
 }
 
-pub async fn get_first(Path(foreign_id): Path<u32>, State(app): State<AppState>) -> impl IntoResponse {
+pub async fn get_first(
+    Path(foreign_id): Path<u32>, 
+    State(app): State<AppState>,
+) -> impl IntoResponse {
     if let Ok(lock) = app.first_table.lock() {
-        let result = lock.iter().filter_map(|(_, data)| {
+        let mut results = lock.iter().filter_map(|data| {
             if data.foreign_id == foreign_id {
                 Some(data.clone())
             } else {
@@ -61,15 +78,27 @@ pub async fn get_first(Path(foreign_id): Path<u32>, State(app): State<AppState>)
         })
         .collect::<Vec<ImageData>>();
 
-        (StatusCode::OK, Json(result))
+        // bahave like LEFT JOIN
+        for result in results.iter_mut() {
+            if let Ok(image) = app.images.lock() {
+                if let Some(im) = image.iter().find(|im| *im == result) {
+                    result.title = im.title.clone();
+                }
+            }
+        }
+
+        (StatusCode::OK, Json(results))
     } else {
         (StatusCode::NOT_FOUND, Json(Vec::new()))
     }
 }
 
-pub async fn get_second(Path(foreign_id): Path<u32>, State(app): State<AppState>) -> impl IntoResponse {
+pub async fn get_second(
+    Path(foreign_id): Path<u32>, 
+    State(app): State<AppState>,
+) -> impl IntoResponse {
     if let Ok(lock) = app.second_table.lock() {
-        let result = lock.iter().filter_map(|(_, data)| {
+        let mut results = lock.iter().filter_map(|data| {
             if data.foreign_id == foreign_id {
                 Some(data.clone())
             } else {
@@ -78,7 +107,16 @@ pub async fn get_second(Path(foreign_id): Path<u32>, State(app): State<AppState>
         })
         .collect::<Vec<ImageData>>();
 
-        (StatusCode::OK, Json(result))
+        // bahave like LEFT JOIN
+        for result in results.iter_mut() {
+            if let Ok(image) = app.images.lock() {
+                if let Some(im) = image.iter().find(|im| *im == result) {
+                    result.title = im.title.clone();
+                }
+            }
+        }
+
+        (StatusCode::OK, Json(results))
     } else {
         (StatusCode::NOT_FOUND, Json(Vec::new()))
     }
@@ -90,9 +128,8 @@ pub async fn post_first(
 ) -> impl IntoResponse {
     if let Ok(mut lock) = app.first_table.lock() {
         for mut payload in payloads {
-            let id = add_first_count();
-            payload.image_id = id;
-            let _ = lock.insert(id, payload);
+            payload.foreign_id = 1;
+            lock.push(payload);
         }
 
         (StatusCode::OK, Json::<Vec<String>>(Vec::new()))
@@ -107,9 +144,57 @@ pub async fn post_second(
 ) -> impl IntoResponse {
     if let Ok(mut lock) = app.second_table.lock() {
         for mut payload in payloads {
-            let id = add_second_count();
-            payload.image_id = id;
-            let _ = lock.insert(id, payload);
+            payload.foreign_id = 1;
+            lock.push(payload);
+        }
+
+        (StatusCode::OK, Json::<Vec<String>>(Vec::new()))
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(Vec::new()))
+    }
+}
+
+pub async fn put_image(
+    State(app): State<AppState>,
+    Json(payload): Json<ImageData>,
+) -> impl IntoResponse {
+    if let Ok(mut lock) = app.images.lock() {
+        if let Some(old) = lock.iter_mut().find(|data| **data == payload) {
+            old.title = payload.title;
+        }
+
+        (StatusCode::OK, Json::<Vec<String>>(Vec::new()))
+    } else {
+        (StatusCode::NOT_FOUND, Json(Vec::new()))
+    }
+}
+
+pub async fn delete_first(
+    State(app): State<AppState>,
+    Json(payloads): Json<Vec<u32>>,
+) -> impl IntoResponse {
+    if let Ok(mut lock) = app.first_table.lock() {
+        for image_id in payloads {
+            if let Some(pos) = lock.iter().position(|image| image.image_id == image_id) {
+                lock.remove(pos);
+            }
+        }
+
+        (StatusCode::OK, Json::<Vec<String>>(Vec::new()))
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(Vec::new()))
+    }
+}
+
+pub async fn delete_second(
+    State(app): State<AppState>,
+    Json(payloads): Json<Vec<u32>>,
+) -> impl IntoResponse {
+    if let Ok(mut lock) = app.second_table.lock() {
+        for image_id in payloads {
+            if let Some(pos) = lock.iter().position(|image| image.image_id == image_id) {
+                lock.remove(pos);
+            }
         }
 
         (StatusCode::OK, Json::<Vec<String>>(Vec::new()))

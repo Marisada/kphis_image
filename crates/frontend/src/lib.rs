@@ -6,6 +6,7 @@ mod binding;
 mod fetch;
 mod image;
 mod image_parser;
+mod mixins;
 mod loader;
 
 use dominator::{Dom, html};
@@ -29,7 +30,7 @@ thread_local! {
 struct App {
     window: &'static LocalKey<Window>,
     loader: AsyncLoader,
-    pub clipboard_images: MutableVec<ImageData>,
+    pub clipboard_images: MutableVec<Rc<ImageData>>,
 }
 
 impl App {
@@ -40,6 +41,7 @@ impl App {
             clipboard_images: MutableVec::new(),
         })
     }
+
     fn render(app: Rc<Self>) -> Dom {
         html!("div", {
             .text("Hello World !!!")
@@ -51,7 +53,7 @@ impl App {
             }))
             .child(html!("br"))
             .child(html!("div", {
-                .class("row")
+                .class(["row","m-0"])
                 .children(&mut [
                     html!("div", {
                         .style("width","100px")

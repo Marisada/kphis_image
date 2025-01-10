@@ -17,6 +17,9 @@ extern "C" {
     pub fn new_with_original(_: &Element, _: &JsValue) -> Viewer;
 
     #[wasm_bindgen(method)]
+    pub fn update(this: &Viewer);
+
+    #[wasm_bindgen(method)]
     pub fn destroy(this: &Viewer);
 }
 
