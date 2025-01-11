@@ -20,7 +20,7 @@ use web_sys::{Element, Window, window};
 
 use model::ImageData;
 
-use image::{ImageCpn, ImageUseAt};
+use image::{ImageCpn, ImageOf};
 use loader::AsyncLoader;
 
 thread_local! {
@@ -60,16 +60,20 @@ impl App {
                     }),
                     html!("div", {
                         .class(["mt-3","p-0"])
-                        .style("width","280px")
-                        .child(ImageCpn::render(ImageCpn::new(ImageUseAt::First), app.clone()))  
+                        .style("max-width","391px")
+                        .style("max-height","400px")
+                        .style("border","1px solid red")
+                        .child(ImageCpn::render("50vh", ImageCpn::new(ImageOf::First, false), app.clone()))  
                     }),
                     html!("div", {
                         .style("width","100px")
                     }),
                     html!("div", {
                         .class(["mt-3","p-0"])
-                        .style("width","280px")
-                        .child(ImageCpn::render(ImageCpn::new(ImageUseAt::Second), app)) 
+                        .style("max-width","392px")
+                        .style("max-height","500px")
+                        .style("border","1px solid red")
+                        .child(ImageCpn::render("300px", ImageCpn::new(ImageOf::Second, true), app)) 
                     }),
                 ])
             }))
@@ -93,4 +97,9 @@ pub fn main_js() {
     if let Some(elm) = app.get_id("app") {
         dominator::append_dom(&elm, App::render(app));
     }
+}
+
+#[inline]
+pub fn str_some(s: String) -> Option<String> {
+    (!s.is_empty()).then_some(s)
 }

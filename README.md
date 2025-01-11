@@ -27,17 +27,17 @@
 > - PostgreSQL uses big-endian, and MySQL uses little-endian  
 > - RUST can convert `Ulid(u128)` to `u128` and from `u128` to `[u8;16]` with `u128::to_be_bytes()` and `u128::to_le_bytes()`
 > - Read more about MySQL performance comparison between INT/BIGINT/UUID/ULID key at [medium.com](https://medium.com/@dariusmatonas/mysql-uuid-vs-ulid-vs-int-bb6083bfd6cf)  
-> - webp image 1024x635 size is 220KB + thumbnail 144x144 size is 14KB, total 234KB per id, so 4.29x10^9 ids need 1003TB of storage
+> - webp image 1024x1024 size is 1115KB + thumbnail 144x144 size is 32KB, total 1147KB per id, so 4.29x10^9 ids need 4920TB of storage
 2. table relation
     1. [ ] single table, without 1:1 file:row table
         - has duplicate path, so CANNOT health check with file storage
-        - has `image_id`, `mode`, `mode_id`, `path`, `create_user`, `create_datetime` columns
+        - has `image_id`, `mode`, `mode_id`, `path`, `title`, `create_user`, `create_datetime` columns
     2. [ ] table for each xxx mode, without 1:1 file:row table
         - has duplicate path across each mode, so CANNOT health check with file storage
-        - has `image_id`, `xxx_id`, `path`, `create_user`, `create_datetime` columns
-    3. [ ] with 1:1 file:row table
+        - has `image_id`, `xxx_id`, `path`, `title`, `create_user`, `create_datetime` columns
+    3. [x] with 1:1 file:row table
         - CAN health check with file storage by images table
-        - images table has `image_id`, `path`, `create_user`, `create_datetime` columns
+        - images table has `image_id`, `path`, `title`, `create_user`, `create_datetime` columns
         - [ ] single table has `image_usage_id`, `use_at`, `at_id`, `image_id`, `create_user`, `create_datetime` columns
         - [ ] xxx mode table has `image_usage_id`, `xxx_id`, `image_id`, `create_user`, `create_datetime` 
         

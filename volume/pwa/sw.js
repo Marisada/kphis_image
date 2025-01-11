@@ -1,4 +1,4 @@
-const VERSION = '20250110-200013' 
+const VERSION = '20250111-214147' 
 const CACHE_NAME = `DOM-AXUM-${VERSION}`
 let browser
 

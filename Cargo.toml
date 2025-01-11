@@ -3,8 +3,8 @@ members = [ "crates/*" ]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
-rust-version = "1.83"
+version = "0.1.1"
+rust-version = "1.84"
 edition = "2021"
 authors = ["Marisada Pitakthum <p.marisada@gmail.com>"]
 description = "Image implementation test for KPHIS"
