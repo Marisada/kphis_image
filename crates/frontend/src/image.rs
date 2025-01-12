@@ -4,7 +4,6 @@ use futures_signals::{
     signal::{not, Mutable, Signal, SignalExt},
     signal_vec::{MutableVec, SignalVecExt},
 };
-use gloo_timers::callback::Timeout;
 use std::{
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
@@ -63,7 +62,6 @@ pub struct ImageCpn {
     viewer: Mutable<Option<Rc<Viewer>>>,
 
     image_datas: MutableVec<Rc<ImageData>>,
-    images_redraw: Mutable<bool>,
 
     selected: Mutable<Vec<Rc<ImageData>>>,
     edited: Mutable<Option<ImageData>>,
@@ -85,7 +83,6 @@ impl ImageCpn {
             loaded: Mutable::new(false),
             viewer: Mutable::new(None),
             image_datas: MutableVec::new(),
-            images_redraw: Mutable::new(false),
             selected: Mutable::new(Vec::new()),
             edited: Mutable::new(None),
             old_title: Mutable::new(String::new()),
@@ -105,10 +102,8 @@ impl ImageCpn {
         if let Some(viewer) = page.viewer.get_cloned() {
             viewer.update();
         } else if let Some(elm) = app.get_id(&page.viewer_id()) {
-            Timeout::new(100, clone!(page => move || {
-                let viewer = Viewer::new_with_original(&elm, &ViewerOption::default().to_value());
-                page.viewer.set(Some(Rc::new(viewer)));
-            })).forget();
+            let viewer = Viewer::new_with_original(&elm, &ViewerOption::default().to_value());
+            page.viewer.set(Some(Rc::new(viewer)));
         }
     }
 
@@ -165,18 +160,11 @@ impl ImageCpn {
             }.for_each(clone!(app, page => move |ready| {
                 if ready {
                     page.loaded.set(true);
-                    app.loader.load(clone!(page => async move {
+                    app.loader.load(clone!(app, page => async move {
                         page.get_images().await;
                         page.viewer_destroy();
-                        page.images_redraw.set(true);
+                        Self::viewer_render(page, app);
                     }))
-                }
-                async {}
-            })))
-            .future(page.images_redraw.signal_cloned().for_each(clone!(app, page => move |redraw| {
-                if redraw {
-                    page.images_redraw.set(false);
-                    Self::viewer_render(page.clone(), app.clone());
                 }
                 async {}
             })))
@@ -314,11 +302,11 @@ impl ImageCpn {
                                                                 selected_lock.clear();
                                                             }
                                                             if !ids.is_empty() {
-                                                                app.loader.load(clone!(page, ids => async move {
+                                                                app.loader.load(clone!(app, page, ids => async move {
                                                                     page.delete_images(&ids).await;
                                                                     page.get_images().await;
                                                                     page.viewer_destroy();
-                                                                    page.images_redraw.set(true);
+                                                                    Self::viewer_render(page, app);
                                                                 }));
                                                             } else {
                                                                 Self::viewer_render(page.clone(), app.clone());
